@@ -208,5 +208,5 @@ __marimo__/
 .DS_Store
 wiki/.DS_Store
 
-src/infra/cdk.json
+/src/infra/cdk.json
 /src/infra/cdk.out
