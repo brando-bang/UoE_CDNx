@@ -26,7 +26,7 @@ class VpnVpcStack(Stack):
             nat_gateways=0,  # No NAT – instance can reach the internet via public IP
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    name="PublicSubnet",
+                    name="VpnVPCPublicSubnet",
                     subnet_type=ec2.SubnetType.PUBLIC,
                 ),
             ],
@@ -38,6 +38,12 @@ class VpnVpcStack(Stack):
             "VpnServerSG",
             vpc=vpc,
             description="Security Group for VPN service",
+            allow_all_outbound=True,
+        )
+        self.vpn_sg.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(8000),
+            "Allow requests over 8000 from anywhere",
         )
 
         # put service code in s3 for deployment
@@ -58,6 +64,9 @@ class VpnVpcStack(Stack):
         # attach the S3 Policy
         ec2_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3FullAccess")
+        )
+        ec2_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
         )
 
         # allow ec2 role to get asset
@@ -116,7 +125,7 @@ class UserDeviceVPCStack(Stack):
             nat_gateways=0,  # No NAT – instance can reach the internet via public IP
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    name="PublicSubnet",
+                    name="UserDeviceVPCPublicSubnet",
                     subnet_type=ec2.SubnetType.PUBLIC,
                 ),
             ],
@@ -128,6 +137,7 @@ class UserDeviceVPCStack(Stack):
             "UserDeviceSG",
             vpc=vpc,
             description="Security Group for User Device",
+            allow_all_outbound=True,
         )
         self.user_device_sg.add_ingress_rule(
             ec2.Peer.any_ipv4(),
@@ -154,6 +164,9 @@ class UserDeviceVPCStack(Stack):
         ec2_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3FullAccess")
         )
+        ec2_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
+        )
 
         # allow ec2 role to get asset
         app_asset.grant_read(ec2_role)
@@ -168,7 +181,7 @@ class UserDeviceVPCStack(Stack):
             f"aws s3 cp {app_asset.s3_object_url} user_device.py",
             # Install dependencies
             "python3 -m pip install --upgrade pip",
-            "pip3 install flask",
+            "pip3 install flask requests",
             # Start the app
             "python3 user_device.py",
         )
@@ -190,40 +203,6 @@ class UserDeviceVPCStack(Stack):
 
 
 # ----------------------------------------------------------------------
-# PermissionsStack - adds cross-stack permissions
-# ----------------------------------------------------------------------
-class PermissionsStack(Stack):
-    """
-    A stack that creates:
-      • a VPC (default 1 AZ, 2 subnets)
-      • an Amazon Linux 2 t3.micro instance
-      • a security group that allows SSH (22) from anywhere
-    """
-
-    def __init__(
-        self,
-        scope: Construct,
-        id: str,
-        user_device_sg: ec2.SecurityGroup,
-        vpn_sg: ec2.SecurityGroup,
-        **kwargs,
-    ) -> None:
-        super().__init__(scope, id, **kwargs)
-
-        user_device_sg.add_egress_rule(
-            ec2.Peer.security_group_id(vpn_sg.security_group_id),
-            ec2.Port.all_traffic(),
-            "Allow egress from user device to VPN server",
-        )
-
-        vpn_sg.add_ingress_rule(
-            ec2.Peer.security_group_id(user_device_sg.security_group_id),
-            ec2.Port.all_traffic(),
-            "Allow VPN to receive requests from user device",
-        )
-
-
-# ----------------------------------------------------------------------
 # CDK App – instantiate stacks
 # ----------------------------------------------------------------------
 app = App()
@@ -232,22 +211,12 @@ east_coast_env = Environment(region="us-east-2")
 west_coast_env = Environment(region="us-west-2")
 
 vpn_stack = VpnVpcStack(
-    app, "VpnVpcStack", cross_region_references=True, env=east_coast_env
+    app, "VpnVpcStack", env=east_coast_env
 )
 user_device_stack = UserDeviceVPCStack(
     app,
     "UserDeviceStack",
-    cross_region_references=True,
     env=west_coast_env,
 )
-permissions_stack = PermissionsStack(
-    app,
-    "PermissionsStack",
-    user_device_stack.user_device_sg,
-    vpn_stack.vpn_sg,
-    cross_region_references=True,
-    env=east_coast_env,
-)
-permissions_stack.add_dependency(user_device_stack)
-permissions_stack.add_dependency(vpn_stack)
+
 app.synth()
