@@ -8,9 +8,9 @@ from constructs import Construct
 
 
 # ----------------------------------------------------------------------
-# VPN VPC Stack – holds all VPN resources
+# VPN Server Stack – holds all VPN resources
 # ----------------------------------------------------------------------
-class VpnVpcStack(Stack):
+class VpnServerStack(Stack):
     """
     This stack deploys the EC2 instance that serves as a VPN service for the prototype
     """
@@ -106,7 +106,7 @@ class VpnVpcStack(Stack):
 
 
 # ----------------------------------------------------------------------
-# User Device VPC Stack – holds all VPN resources
+# User Device VPC Stack – holds all entrypoint resources
 # ----------------------------------------------------------------------
 class UserDeviceVPCStack(Stack):
     """
@@ -214,7 +214,7 @@ app = App()
 vpn_env = Environment(region="ap-northeast-2")
 user_device_env = Environment(region="us-west-2")
 
-vpn_stack = VpnVpcStack(app, "VpnStack", env=vpn_env)
+vpn_server_stack = VpnServerStack(app, "VpnServerStack", env=vpn_env)
 user_device_stack = UserDeviceVPCStack(
     app,
     "UserDeviceStack",
