@@ -1,2 +1,2 @@
 # UoE_NDNx
-See [wiki](https://github.com/brando-bang/UoE_NDNx/tree/main/wiki)
+See [wiki](https://brando-bang.github.io/UoE_NDNx/)
