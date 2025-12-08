@@ -6,15 +6,18 @@ from aws_cdk import aws_iam as iam
 from aws_cdk import aws_s3_assets as s3_assets
 from constructs import Construct
 
+ASSET_KEY = os.getenv("ndnx_asset_key")
+CONTENT_KEY = os.getenv("ndnx_content_key")
 CDN_URL = os.getenv("ndnx_qa_cdn_url")
+NDNX_CONTENT_CACHE = os.getenv("ndnx_qa_content_cache")
 QA_KEY = os.getenv("ndnx_qa_key")
 
 # ----------------------------------------------------------------------
-# VPN Server Stack – holds all VPN resources
+# VPN Service Stack – holds all VPN resources
 # ----------------------------------------------------------------------
 
 
-class VpnServerStack(Stack):
+class VpnServiceStack(Stack):
     """
     This stack deploys the EC2 instance that serves as a VPN service for the prototype
     """
@@ -37,9 +40,85 @@ class VpnServerStack(Stack):
         )
 
         # Security Group for server
+        self.ndnx_cache_sg = ec2.SecurityGroup(
+            self,
+            "NDNxCacheSG",
+            vpc=vpc,
+            description="Security Group for VPN service",
+            allow_all_outbound=True,
+        )
+        self.ndnx_cache_sg.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(8000),
+            "Allow requests over 8000 from anywhere",
+        )
+
+        # put service code in s3 for deployment
+        current_directory = os.getcwd()
+        repo_directory = os.path.abspath(
+            os.path.join(current_directory, os.path.pardir)
+        )
+        ndnx_cache_code_path = repo_directory + "/app/ndnx_content_key_cache.py"
+
+        ndnx_cache_app_asset = s3_assets.Asset(
+            self, "ndnx_cache_asset", path=ndnx_cache_code_path
+        )
+
+        # create ec2 role
+        ndnx_cache_ec2_role = iam.Role(
+            self,
+            "NDNxCacheRole",
+            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
+        )
+        # attach the S3 Policy
+        ndnx_cache_ec2_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3FullAccess")
+        )
+        ndnx_cache_ec2_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "AmazonSSMManagedInstanceCore"
+            )
+        )
+
+        # allow ec2 role to get asset
+        ndnx_cache_app_asset.grant_read(ndnx_cache_ec2_role)
+
+        user_data = ec2.UserData.for_linux()
+        user_data.add_commands(
+            "yum update -y",
+            # Create a dir for the app
+            "mkdir -p /opt/app",
+            f"cd /opt/app",
+            # Download the asset bundle from S3
+            f"aws s3 cp {ndnx_cache_app_asset.s3_object_url} ndnx_content_key_cache.py",
+            # Install dependencies
+            "python3 -m pip install --upgrade pip",
+            "pip3 install flask",
+            # Start the app
+            "python3 ndnx_content_key_cache.py",
+        )
+
+        # Server for ndnx cache
+        ndnx_cache_server = ec2.Instance(
+            self,
+            "NDNxCache",
+            instance_type=ec2.InstanceType("t4g.micro"),
+            machine_image=ec2.MachineImage.latest_amazon_linux2(
+                cpu_type=ec2.AmazonLinuxCpuType.ARM_64,
+            ),
+            vpc=vpc,
+            security_group=self.ndnx_cache_sg,
+            instance_name="NDNxCache",
+            user_data=user_data,
+            role=ndnx_cache_ec2_role,
+        )
+
+        cache_domain = ndnx_cache_server.instance_public_ip
+
+        # Security Group for server
         self.vpn_sg = ec2.SecurityGroup(
             self,
-            "VpnServerSG",
+            "VPNServerSG",
             vpc=vpc,
             description="Security Group for VPN service",
             allow_all_outbound=True,
@@ -51,47 +130,47 @@ class VpnServerStack(Stack):
         )
 
         # put service code in s3 for deployment
-        current_directory = os.getcwd()
-        repo_directory = os.path.abspath(
-            os.path.join(current_directory, os.path.pardir)
-        )
-        code_path = repo_directory + "/app/vpn_service.py"
+        vpn_service_code_path = repo_directory + "/app/vpn_service.py"
 
-        app_asset = s3_assets.Asset(self, "vpn_service_asset", path=code_path)
+        vpn_service_app_asset = s3_assets.Asset(
+            self, "vpn_service_asset", path=vpn_service_code_path
+        )
 
         # create ec2 role
-        ec2_role = iam.Role(
+        vpn_service_ec2_role = iam.Role(
             self,
             "VPNServiceServerRole",
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
         )
         # attach the S3 Policy
-        ec2_role.add_managed_policy(
+        vpn_service_ec2_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3FullAccess")
         )
-        ec2_role.add_managed_policy(
+        vpn_service_ec2_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(
                 "AmazonSSMManagedInstanceCore"
             )
         )
 
         # allow ec2 role to get asset
-        app_asset.grant_read(ec2_role)
+        vpn_service_app_asset.grant_read(vpn_service_ec2_role)
 
         user_data = ec2.UserData.for_linux()
         user_data.add_commands(
             # Set env variables
             f"export ndnx_qa_cdn_url={CDN_URL}",
             f"export ndnx_qa_key={QA_KEY}",
+            f"export ndnx_content_key={CONTENT_KEY}",
+            f"export ndnx_content_key_cache={cache_domain}",
             "yum update -y",
             # Create a dir for the app
             "mkdir -p /opt/app",
             f"cd /opt/app",
             # Download the asset bundle from S3
-            f"aws s3 cp {app_asset.s3_object_url} vpn_service.py",
+            f"aws s3 cp {vpn_service_app_asset.s3_object_url} vpn_service.py",
             # Install dependencies
             "python3 -m pip install --upgrade pip",
-            "pip3 install cryptography flask requests==2.29.0",
+            "pip3 install cryptography flask redis requests==2.29.0",
             # Start the app
             "python3 vpn_service.py",
         )
@@ -108,7 +187,7 @@ class VpnServerStack(Stack):
             security_group=self.vpn_sg,
             instance_name="VPNServer",
             user_data=user_data,
-            role=ec2_role,
+            role=vpn_service_ec2_role,
         )
 
 
@@ -185,6 +264,9 @@ class UserDeviceVPCStack(Stack):
         user_data = ec2.UserData.for_linux()
         user_data.add_commands(
             # Set env variables
+            f"export ndnx_asset_key={ASSET_KEY}",
+            f"export ndnx_content_key={CONTENT_KEY}",
+            f"export ndnx_qa_content_cache={NDNX_CONTENT_CACHE}",
             f"export ndnx_qa_cdn_url={CDN_URL}",
             f"export ndnx_qa_key={QA_KEY}",
             "yum update -y",
@@ -224,7 +306,7 @@ app = App()
 vpn_env = Environment(region="ap-northeast-2")
 user_device_env = Environment(region="us-west-2")
 
-vpn_server_stack = VpnServerStack(app, "VpnServerStack", env=vpn_env)
+vpn_server_stack = VpnServiceStack(app, "VpnServiceStack", env=vpn_env)
 user_device_stack = UserDeviceVPCStack(
     app,
     "UserDeviceStack",
