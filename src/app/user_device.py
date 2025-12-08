@@ -1,5 +1,6 @@
 import os
 import time
+from urllib.parse import quote_plus
 
 import requests
 from cryptography.fernet import Fernet
@@ -7,9 +8,15 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
+ASSET_KEY = os.getenv("ndnx_asset_key").encode("utf-8")
 CDN_URL = os.getenv("ndnx_qa_cdn_url")
+CONTENT_KEY = os.getenv("ndnx_content_key").encode("utf-8")
+NDNX_CONTENT_CACHE = os.getenv("ndnx_qa_content_cache")
 QA_KEY = os.getenv("ndnx_qa_key").encode("utf-8")
-crypto_util = Fernet(QA_KEY)
+
+asset_crypto_util = Fernet(ASSET_KEY)
+content_key_crypto_util = Fernet(CONTENT_KEY)
+vpn_crypto_util = Fernet(QA_KEY)
 
 
 @app.route("/heartbeat")
@@ -33,7 +40,7 @@ def download_direct():
 def download_cdn():
     start_time = time.time()
 
-    get(CDN_URL)
+    get(CDN_URL + "10mb.bin")
     elapsed_time = time.time() - start_time
 
     return jsonify(str(elapsed_time * 1000) + " milliseconds")
@@ -47,7 +54,9 @@ def send_request():
         target_url = request.args.get("url")
         target_endpoint = request.args.get("endpoint")
         plaintext_vpn_payload_bytes = target_endpoint.encode("utf-8")
-        encrypted_vpn_payload_bytes = crypto_util.encrypt(plaintext_vpn_payload_bytes)
+        encrypted_vpn_payload_bytes = vpn_crypto_util.encrypt(
+            plaintext_vpn_payload_bytes
+        )
         encrypted_vpn_payload = encrypted_vpn_payload_bytes.decode("utf-8")
         vpn_url = target_url + "/use_vpn?vpn_payload=" + encrypted_vpn_payload
 
@@ -55,8 +64,42 @@ def send_request():
         response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
 
         encrypted_vpn_response_bytes = response.content
-        decrypted_vpn_response_bytes = crypto_util.decrypt(encrypted_vpn_response_bytes)
+        decrypted_vpn_response_bytes = vpn_crypto_util.decrypt(
+            encrypted_vpn_response_bytes
+        )
         decrypted_vpn_response_bytes.decode("utf-8")
+
+        elapsed_time = time.time() - start_time
+
+        return jsonify(str(elapsed_time * 1000) + " milliseconds")
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/use_ndnx")
+def use_ndnx():
+    try:
+        start_time = time.time()
+        content_key = request.args.get("content_key")
+        encrypted_content_key = content_key_crypto_util.encrypt(
+            content_key.encode("utf-8")
+        ).decode("utf-8")
+
+        content_key_query_param = quote_plus(encrypted_content_key)
+
+        target_url = request.args.get("url")
+
+        encrypted_ndnx_content_key = get(
+            f"{target_url}/use_ndnx?content_key={content_key_query_param}"
+        )
+
+        ndnx_content_key = vpn_crypto_util.decrypt(encrypted_ndnx_content_key).decode(
+            "utf-8"
+        )
+
+        encrypted_asset = get(CDN_URL + ndnx_content_key)
+
+        asset_crypto_util.decrypt(encrypted_asset)
 
         elapsed_time = time.time() - start_time
 
