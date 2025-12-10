@@ -9,10 +9,10 @@ from flask import Flask, jsonify, request
 # ----------------------------------------------------------------------
 # User Device Service Code
 # This service simulates a user device that can run VPN client software
-# with optional NDNx functionality. It can request to download an asset
+# with optional CDNx functionality. It can request to download an asset
 # directly from a host server, from a CDN, directly from the host over VPN,
-# through a CDN over VPN, or using NDNx.
-# For the purpose of the NDNx research project, the endpoint for each internet
+# through a CDN over VPN, or using CDNx.
+# For the purpose of the CDNx research project, the endpoint for each internet
 # strategy also times the download for comparing relative performance.
 # ----------------------------------------------------------------------
 
@@ -20,11 +20,11 @@ app = Flask(__name__)
 
 # These constants are required for the VPN e2ee and are passed to the
 # server during deployment in the cdk.py file.
-ASSET_KEY = os.getenv("ndnx_asset_key").encode("utf-8")
-CDN_URL = os.getenv("ndnx_qa_cdn_url")
-CONTENT_KEY = os.getenv("ndnx_content_key").encode("utf-8")
-NDNX_CONTENT_CACHE = os.getenv("ndnx_qa_content_cache")
-QA_KEY = os.getenv("ndnx_qa_key").encode("utf-8")
+ASSET_KEY = os.getenv("cdnx_asset_key").encode("utf-8")
+CDN_URL = os.getenv("cdnx_qa_cdn_url")
+CONTENT_KEY = os.getenv("cdnx_content_key").encode("utf-8")
+CDNX_CONTENT_CACHE = os.getenv("cdnx_qa_content_cache")
+QA_KEY = os.getenv("cdnx_qa_key").encode("utf-8")
 
 # creates encrypt/decrypt utils for each specific key
 asset_crypto_util = Fernet(ASSET_KEY)
@@ -102,10 +102,10 @@ def send_request():
         return jsonify({"error": str(e)}), 500
 
 
-# Sends a request to the VPN service while employig NDNx techniques to retrieve
+# Sends a request to the VPN service while employig CDNx techniques to retrieve
 # the asset's content encrypted from a VPN-managed geographically local cache node.
-@app.route("/use_ndnx")
-def use_ndnx():
+@app.route("/use_cdnx")
+def use_cdnx():
     try:
         start_time = time.time()
 
@@ -119,18 +119,18 @@ def use_ndnx():
         ).decode("utf-8")
         content_key_query_param = quote_plus(encrypted_content_key)
 
-        # Send the NDNx request to the VPN service for the encrypted content key for the encrypted asset
-        encrypted_ndnx_content_key = get(
-            f"{target_url}/use_ndnx?content_key={content_key_query_param}"
+        # Send the CDNx request to the VPN service for the encrypted content key for the encrypted asset
+        encrypted_cdnx_content_key = get(
+            f"{target_url}/use_cdnx?content_key={content_key_query_param}"
         )
 
         # Decrypt the e2ee response for the still-encrypted key
-        ndnx_content_key = vpn_crypto_util.decrypt(encrypted_ndnx_content_key).decode(
+        cdnx_content_key = vpn_crypto_util.decrypt(encrypted_cdnx_content_key).decode(
             "utf-8"
         )
 
-        # Retrieve the encrypted asset from the VPN-managed CDN to complete the NDNx exchange.
-        encrypted_asset = get(CDN_URL + ndnx_content_key)
+        # Retrieve the encrypted asset from the VPN-managed CDN to complete the CDNx exchange.
+        encrypted_asset = get(CDN_URL + cdnx_content_key)
 
         # Decrypt the asset - it is never in plaintext until it is in the user device's memory
         asset_crypto_util.decrypt(encrypted_asset)

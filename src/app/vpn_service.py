@@ -10,17 +10,17 @@ from flask import Flask, jsonify, request
 # This service simulates the VPN server that forwards requests from the
 # User Device to ensure e2ee transmission of user traffic. It can forward
 # requests to download an asset directly from a host server, from a CDN,
-# or retrieve an NDNx content key from the content key cache.
+# or retrieve an CDNx content key from the content key cache.
 # ----------------------------------------------------------------------
 
 app = Flask(__name__)
 
 # These constants are required for the VPN e2ee and are passed to the
 # server during deployment in the cdk.py file.
-CDN_URL = os.getenv("ndnx_qa_cdn_url")
-CONTENT_KEY = os.getenv("ndnx_content_key").encode("utf-8")
-CONTENT_KEY_CACHE = os.getenv("ndnx_content_key_cache")
-QA_KEY = os.getenv("ndnx_qa_key").encode("utf-8")
+CDN_URL = os.getenv("cdnx_qa_cdn_url")
+CONTENT_KEY = os.getenv("cdnx_content_key").encode("utf-8")
+CONTENT_KEY_CACHE = os.getenv("cdnx_content_key_cache")
+QA_KEY = os.getenv("cdnx_qa_key").encode("utf-8")
 
 # creates encrypt/decrypt utils for each specific key
 content_key_crypto_util = Fernet(CONTENT_KEY)
@@ -72,22 +72,22 @@ def use_vpn():
     return encrypted_vpn_response
 
 
-# This endpoint handles NDNx requests from the user device. The requested content key is
+# This endpoint handles CDNx requests from the user device. The requested content key is
 # decrypted and then checked in the content key cache to determine what the encrypted key
 # that should be requested by the user is. The encrypted key is also re-encrypted with the
 # VPN - client shared key in-line with the rest of the VPN service's e2ee responses.
-@app.route("/use_ndnx")
-def use_ndnx():
+@app.route("/use_cdnx")
+def use_cdnx():
     encrypted_content_key = request.args.get("content_key")
     content_key = content_key_crypto_util.decrypt(encrypted_content_key).decode("utf-8")
 
     content_key_query_param = quote_plus(content_key)
 
-    ndnx_content_key = get(
+    cdnx_content_key = get(
         f"http://{CONTENT_KEY_CACHE}:8000/content_key?content_key={content_key_query_param}"
     )
 
-    return vpn_crypto_util.encrypt(ndnx_content_key).decode("utf-8")
+    return vpn_crypto_util.encrypt(cdnx_content_key).decode("utf-8")
 
 
 # Helper tool for making GET requests

@@ -3,8 +3,8 @@ import os
 from flask import Flask, jsonify, request
 
 # ----------------------------------------------------------------------
-# NDNx Content Key Cache Service Code
-# This service simulates a content key cache that NDNx uses to check if
+# CDNx Content Key Cache Service Code
+# This service simulates a content key cache that CDNx uses to check if
 # it can serve a requested asset. This informs the VPN service what the
 # encrypted content key the user device's client software should request for is.
 # ----------------------------------------------------------------------
@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 # This constant corresponds to the VPN-managed cache entry for the asset requested in the simulation. It is
 # passed to the server during deployment in cdk.py
-ENCRYPTED_CONTENT_KEY = os.getenv("ndnx_encrypted_content_key").encode("utf-8")
+ENCRYPTED_CONTENT_KEY = os.getenv("cdnx_encrypted_content_key").encode("utf-8")
 
 # Heartbeat endpoint included on all services for testing deployment status
 
