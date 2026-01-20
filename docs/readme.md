@@ -27,4 +27,4 @@ More information can be found in the below links:
 
 [VPN Server](VPNServer.md)
 
-[CDNx Content Cache](CDNxContentCache.md)
+[CDNx Content Cache](CDNxContentKeyCache.md)
