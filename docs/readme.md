@@ -15,7 +15,7 @@ Fig. 2: flow chart for content available in CDNx cache
 Fig. 3: flow chart for content that is not in the cache
 
 # About this Repo
-This repo contains the service code and infrastructure-as-code for deploying a simulation of a geographically separated user's device and a VPN server. There are endpoints available on the two servers to allow for speed testing different configurations of content retrieval: with VPN, with CDN, with both, with neither, and with CDNx.
+[This repo](https://github.com/brando-bang/UoE_CDNx/blob/main/src/app/user_device.py) contains the service code and infrastructure-as-code for deploying a simulation of a geographically separated user's device and a VPN server. There are endpoints available on the two servers to allow for speed testing different configurations of content retrieval: with VPN, with CDN, with both, with neither, and with CDNx.
 
 # Results
 The simulation was used to carry out an experiment about the relative download speeds of each internet strategy, visible in this chart
